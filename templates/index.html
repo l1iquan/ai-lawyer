@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI法律咨询助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            max-height: 700px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: #f8fafc;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #2d3748;
+            border: 1px solid #e2e8f0;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .message.assistant.typing .message-content::after {
+            content: '';
+            display: inline-block;
+            width: 2px;
+            height: 16px;
+            background: #4a90e2;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .advice-message {
+            background: linear-gradient(135deg, #e6f3ff 0%, #cce7ff 100%);
+            border-left: 4px solid #4a90e2;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .advice-title {
+            font-weight: 600;
+            color: #2c5282;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .status-message {
+            text-align: center;
+            color: #718096;
+            font-style: italic;
+            margin: 15px 0;
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .input-container {
+            padding: 20px 30px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 25px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+        }
+
+        .message-input:focus {
+            border-color: #4a90e2;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+
+        .send-button {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .send-button:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #e53e3e;
+        }
+
+        /* 滚动条样式 */
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 10px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+
+        /* 语音控制样式 */
+        .voice-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .voice-toggle {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .voice-toggle input[type="checkbox"] {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            position: relative;
+            transition: background 0.3s ease;
+            margin-right: 8px;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s ease;
+        }
+
+        .voice-toggle input:checked + .toggle-slider {
+            background: #4ade80;
+        }
+
+        .voice-toggle input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .toggle-label {
+            color: white;
+            font-size: 14px;
+        }
+
+        .voice-select {
+            padding: 6px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .voice-select:focus {
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .voice-select option {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .stop-audio-btn {
+            padding: 6px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            background: rgba(255, 59, 48, 0.8);
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .stop-audio-btn:hover {
+            background: rgba(255, 59, 48, 1);
+            transform: scale(1.05);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                height: 90vh;
+                margin: 10px;
+            }
+            
+            .message-content {
+                max-width: 85%;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .voice-controls {
+                gap: 10px;
+            }
+            
+            .voice-select {
+                font-size: 12px;
+                padding: 4px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI法律咨询助手</h1>
+            <p>专业、高效、便捷的法律咨询服务</p>
+            <div class="voice-controls">
+                <label class="voice-toggle">
+                    <input type="checkbox" id="voiceEnabled" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">语音输出</span>
+                </label>
+                <select id="voiceType" class="voice-select">
+                    <optgroup label="豆包音色">
+                        <option value="ICL_zh_female_lingdongxinxin_cs_tob">灵动欣欣</option>
+                        <option value="ICL_zh_female_guaiqiaokeer_cs_tob">乖巧可儿</option>
+                        <option value="ICL_zh_female_nuanxinqianqian_cs_tob">暖心茜茜</option>
+                        <option value="multi_male_xudong_conversation_wvae_bigtts">Daníel</option>
+                        <option value="multi_zh_male_youyoujunzi_moon_bigtts">ひかる（光）</option>
+                    </optgroup>
+                    <optgroup label="Qwen音色">
+                        <option value="Nofish" selected>Nofish</option>
+                        <option value="Elias">Elias</option>
+                        <option value="Kiki">Kiki</option>
+                    </optgroup>
+                </select>
+                <button id="stopAudio" class="stop-audio-btn" style="display: none;">⏹️ 停止播放</button>
+            </div>
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="message assistant">
+                <div class="message-content">
+                    您好！我是AI律师助手，帮您厘清案件事实并提供法律建议。请问有什么可以帮助您的吗？
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    class="message-input" 
+                    id="messageInput" 
+                    placeholder="请描述您的法律问题..."
+                    maxlength="500"
+                >
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    ➤
+                </button>
+            </div>
+        </div>
+    </div>
+
+   <script>
+    let sessionId = generateSessionId();
+    let isProcessing = false;
+    let currentAudio = null;
+    let isPlaying = false;
+
+    // === TTS核心控制变量 ===
+    let ttsBuffer = '';
+    let ttsQueue = []; // 等待合成的文本队列
+    let audioQueue = []; // 等待播放的音频队列
+    let ttsSequenceNumber = 0; // 全局序列号
+    let nextExpectedSequence = 0; // 下一个应播放的序号
+    let activeTTSRequests = 0;
+    const maxConcurrentTTS = 2; // 降低并发数，避免触发RPM限制
+    const punctuationRegex = /[：。？]/;
+    let ttsProcessing = false; // 防止重复处理队列
+
+    function generateSessionId() {
+        return 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    }
+
+    // ========== 聊天显示相关 ==========
+    function addMessage(content, isUser = false) {
+        const chatContainer = document.getElementById('chatContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = content;
+        messageDiv.appendChild(contentDiv);
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function addTypingMessage() {
+        const chatContainer = document.getElementById('chatContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant typing';
+        messageDiv.id = 'typingMessage';
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = '';
+        messageDiv.appendChild(contentDiv);
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return contentDiv;
+    }
+
+    function updateTypingMessage(content) {
+        const typingMessage = document.getElementById('typingMessage');
+        if (typingMessage) {
+            const contentDiv = typingMessage.querySelector('.message-content');
+            contentDiv.textContent += content;
+            const chatContainer = document.getElementById('chatContainer');
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // === 检查是否需要TTS合成 ===
+            handleTTS(content);
+        }
+    }
+
+    function removeTypingMessage() {
+        const typingMessage = document.getElementById('typingMessage');
+        if (typingMessage) {
+            typingMessage.classList.remove('typing');
+            typingMessage.id = '';
+        }
+    }
+
+    // ========== TTS 队列与并发控制 ==========
+    function handleTTS(content) {
+        const voiceEnabled = document.getElementById('voiceEnabled').checked;
+        if (!voiceEnabled) return;
+
+        for (let i = 0; i < content.length; i++) {
+            const char = content[i];
+            ttsBuffer += char;
+
+            if (punctuationRegex.test(char)) {
+                const sentence = ttsBuffer.trim();
+                if (sentence) {
+                    console.log('[TTS] 检测到标点，加入队列:', sentence);
+                    ttsQueue.push(sentence);
+                    // 不立即处理，等待队列积累
+                }
+                ttsBuffer = '';
+            }
+        }
+        
+        // 延迟处理队列，避免一次性发送过多请求
+        if (!ttsProcessing && ttsQueue.length > 0) {
+            ttsProcessing = true;
+            setTimeout(() => {
+                processTTSQueue();
+            }, 100);
+        }
+    }
+
+    async function processTTSQueue() {
+        if (ttsQueue.length === 0) {
+            ttsProcessing = false;
+            return;
+        }
+
+        // 严格限制并发数
+        if (activeTTSRequests >= maxConcurrentTTS) {
+            // 等待一段时间后重试
+            setTimeout(processTTSQueue, 500);
+            return;
+        }
+
+        const text = ttsQueue.shift();
+        const currentSequence = ttsSequenceNumber++;
+        activeTTSRequests++;
+
+        const voiceType = document.getElementById('voiceType').value;
+        console.log(`[TTS] 发送请求 序列:${currentSequence} 文本:${text}`);
+
+        try {
+            const response = await fetch('/tts', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    text: text,
+                    voice_type: voiceType
+                })
+            });
+
+            if (!response.ok) throw new Error('TTS请求失败: ' + response.status);
+
+            const data = await response.json();
+            if (data.audio_data) {
+                console.log(`[TTS] 收到音频 序列:${currentSequence} 长度:${data.audio_data.length}`);
+                audioQueue.push({
+                    sequence: currentSequence,
+                    audioData: data.audio_data,
+                    text
+                });
+                audioQueue.sort((a, b) => a.sequence - b.sequence);
+                checkAndPlayAudio();
+            } else if (data.error) {
+                console.error(`[TTS] 服务错误 序列:${currentSequence}:`, data.error);
+            }
+        } catch (err) {
+            console.error(`[TTS] 请求失败 序列:${currentSequence}:`, err);
+        } finally {
+            activeTTSRequests--;
+            // 立即处理下一个请求，保持响应速度
+            processTTSQueue();
+        }
+    }
+
+    // ========== 音频播放逻辑 ==========
+    function checkAndPlayAudio() {
+        if (isPlaying || audioQueue.length === 0) return;
+
+        audioQueue.sort((a, b) => a.sequence - b.sequence);
+        const nextAudioIndex = audioQueue.findIndex(item => item.sequence === nextExpectedSequence);
+        if (nextAudioIndex === -1) return;
+
+        playNextAudio();
+    }
+
+    function playNextAudio() {
+        if (isPlaying || audioQueue.length === 0) return;
+
+        const nextAudioIndex = audioQueue.findIndex(item => item.sequence === nextExpectedSequence);
+        if (nextAudioIndex === -1) return;
+
+        const audioItem = audioQueue.splice(nextAudioIndex, 1)[0];
+        const audioData = audioItem.audioData;
+        console.log(`[TTS] 开始播放 序列:${audioItem.sequence} 文本:${audioItem.text}`);
+
+        isPlaying = true;
+        const audio = new Audio('data:audio/wav;base64,' + audioData);
+        currentAudio = audio;
+        document.getElementById('stopAudio').style.display = 'inline-block';
+
+        audio.onended = () => {
+            console.log(`[TTS] 播放结束 序列:${audioItem.sequence}`);
+            currentAudio = null;
+            isPlaying = false;
+            nextExpectedSequence = audioItem.sequence + 1;
+            checkAndPlayAudio();
+        };
+
+        audio.onerror = (err) => {
+            console.error('[TTS] 播放失败:', err);
+            currentAudio = null;
+            isPlaying = false;
+            document.getElementById('stopAudio').style.display = 'none';
+            nextExpectedSequence = audioItem.sequence + 1;
+            checkAndPlayAudio();
+        };
+
+        audio.play().then(() => {
+            console.log('[TTS] 播放成功');
+        }).catch(err => {
+            console.warn('[TTS] 自动播放受限，等待用户交互');
+            const enableAudio = () => {
+                audio.play().then(() => {
+                    console.log('[TTS] 用户交互后播放成功');
+                }).catch(e => {
+                    console.error('[TTS] 用户交互后仍失败:', e);
+                });
+                document.removeEventListener('click', enableAudio);
+                document.removeEventListener('keydown', enableAudio);
+            };
+            document.addEventListener('click', enableAudio, { once: true });
+            document.addEventListener('keydown', enableAudio, { once: true });
+        });
+    }
+
+    function stopAudio() {
+        if (currentAudio) currentAudio.pause();
+        currentAudio = null;
+        isPlaying = false;
+        ttsBuffer = '';
+        ttsQueue = [];
+        audioQueue = [];
+        document.getElementById('stopAudio').style.display = 'none';
+    }
+
+    // ========== 发送消息 ==========
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        if (!message || isProcessing) return;
+
+        isProcessing = true;
+        document.getElementById('sendButton').disabled = true;
+
+        // 重置TTS状态
+        ttsSequenceNumber = 0;
+        nextExpectedSequence = 0;
+        ttsBuffer = '';
+        ttsQueue = [];
+        audioQueue = [];
+        isPlaying = false;
+
+        addMessage(message, true);
+        input.value = '';
+
+        const typingContent = addTypingMessage();
+
+        try {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ message, session_id: sessionId })
+            });
+            if (!response.ok) throw new Error('网络错误');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            switch (data.type) {
+                                case 'message':
+                                    updateTypingMessage(data.content);
+                                    break;
+                                case 'advice':
+                                    addAdviceMessage(data.content);
+                                    break;
+                                case 'error':
+                                    removeTypingMessage();
+                                    addErrorMessage(data.content);
+                                    break;
+                                case 'complete':
+                                    removeTypingMessage();
+                                    break;
+                            }
+                        } catch (e) {
+                            console.error('解析数据失败:', e);
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('发送消息失败:', err);
+            removeTypingMessage();
+            addErrorMessage('网络连接失败，请稍后重试');
+        } finally {
+            isProcessing = false;
+            document.getElementById('sendButton').disabled = false;
+        }
+    }
+
+    // ========== 消息显示相关 ==========
+    function addAdviceMessage(content) {
+        const chatContainer = document.getElementById('chatContainer');
+        const adviceDiv = document.createElement('div');
+        adviceDiv.className = 'advice-message';
+        adviceDiv.innerHTML = `
+            <div class="advice-title">专业法律建议</div>
+            <div>${content.replace(/\n/g, '<br>')}</div>
+        `;
+        chatContainer.appendChild(adviceDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function addErrorMessage(content) {
+        const chatContainer = document.getElementById('chatContainer');
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = content;
+        chatContainer.appendChild(errorDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // ========== 事件绑定 ==========
+    document.getElementById('messageInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    window.addEventListener('load', function() {
+        document.getElementById('messageInput').focus();
+    });
+
+    document.getElementById('stopAudio').addEventListener('click', stopAudio);
+</script>
+
+</body>
+</html>
