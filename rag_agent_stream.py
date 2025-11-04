@@ -73,7 +73,7 @@ def get_legal_advice(case_summary: str) -> str:
 
 # 初始化主agent模型
 main_model = init_chat_model(
-    model="qwen-plus-latest",
+    model="qwen3-32b",
     model_provider="openai",
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     api_key=DASHSCOPE_API_KEY,
@@ -179,8 +179,14 @@ def run_legal_consultation():
             
             print()  # 换行
             
+            # 调试信息：打印完整的助手回复
+            print(f"[DEBUG] 助手完整回复: {assistant_response}")
+            print(f"[DEBUG] 是否包含花括号格式: {'{案件摘要：' in assistant_response}")
+            print(f"[DEBUG] 咨询是否完成: {consultation_complete}")
+            
             # 检测并保存案件摘要，然后自动调用工具
-            if "案件摘要" in assistant_response and not consultation_complete:
+            # 只有真正的案件摘要前面才会出现{案件摘要：}格式
+            if "{案件摘要：" in assistant_response and not consultation_complete:
                 last_case_summary = assistant_response              
                 # 自动调用工具获取建议
                 try:
@@ -188,6 +194,7 @@ def run_legal_consultation():
                     last_advice = advice
                     consultation_complete = True
                     
+                    print(f"\n助手: 基于您的案件情况，我为您提供了以下专业的法律建议：\n\n{advice}\n\n如果您对任何建议有疑问，可以随时问我。")
                     
                     # 将法律建议添加到Agent的对话历史中（不显示给用户）
                     _ = main_agent.invoke(

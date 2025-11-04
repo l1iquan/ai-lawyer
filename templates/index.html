@@ -201,6 +201,50 @@
             cursor: not-allowed;
         }
 
+        /* 语音输入按钮样式 */
+        .speech-button {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+            position: relative;
+        }
+
+        .speech-button:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .speech-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #6c757d;
+        }
+
+        .speech-button.recording {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
+        .speech-input-container {
+            display: flex;
+            align-items: center;
+        }
+
         .error-message {
             background: #fed7d7;
             color: #c53030;
@@ -395,6 +439,9 @@
                     placeholder="请描述您的法律问题..."
                     maxlength="500"
                 >
+                <button id="speechButton" class="speech-button" title="语音输入">
+                    🔊
+                </button>
                 <button class="send-button" id="sendButton" onclick="sendMessage()">
                     ➤
                 </button>
@@ -407,6 +454,169 @@
     let isProcessing = false;
     let currentAudio = null;
     let isPlaying = false;
+
+    // ========== 语音输入功能类 ==========
+    class SpeechTextInput {
+        constructor(options = {}) {
+            this.buttonId = options.buttonId || 'speechButton';
+            this.onResult = options.onResult || (() => {});
+            this.onError = options.onError || (() => {});
+
+            this.recognition = null;
+            this.isRecording = false;
+            this.recognitionMethod = 'webspeech';
+            this.recognizedText = ''; // 存储识别的文字
+
+            this.init();
+        }
+
+        init() {
+            this.button = document.getElementById(this.buttonId);
+
+            if (!this.button) {
+                this.onError('找不到指定的DOM元素');
+                return;
+            }
+
+            this.checkSupport();
+            this.bindEvents();
+        }
+
+        async checkSupport() {
+            const hasWebSpeech = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+            const hasMediaRecorder = 'MediaRecorder' in window;
+            const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost';
+
+            if (hasWebSpeech && isSecureContext) {
+                // 页面加载时就请求麦克风权限
+                this.requestMicrophonePermission();
+            } else if (hasWebSpeech && !isSecureContext) {
+                // 非安全上下文，提示用户
+                this.button.disabled = true;
+                this.onError('语音识别需要安全连接（HTTPS）或localhost访问。内网环境请使用 https://localhost:5000 或配置SSL证书');
+            } else if (hasMediaRecorder) {
+                this.recognitionMethod = 'media';
+                console.log('使用 MediaRecorder API');
+            } else {
+                this.onError('浏览器不支持语音识别');
+                this.button.disabled = true;
+            }
+        }
+
+        async requestMicrophonePermission() {
+            try {
+                // 显示权限请求提示
+                this.button.title = '正在请求麦克风权限...';
+                this.button.disabled = true;
+                
+                await this.checkMicrophonePermission();
+                this.initWebSpeech();
+                console.log('使用 Web Speech API');
+                
+                // 权限获取成功，恢复按钮状态
+                this.button.disabled = false;
+                this.button.title = '语音输入';
+                
+            } catch (error) {
+                console.error('麦克风权限获取失败:', error);
+                this.onError('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
+                this.button.disabled = true;
+                this.button.title = '麦克风权限被拒绝';
+            }
+        }
+
+        async checkMicrophonePermission() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (error) {
+                console.error('麦克风权限检查失败:', error);
+                throw error;
+            }
+        }
+
+        initWebSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.recognition = new SpeechRecognition();
+
+            this.recognition.continuous = true;
+            this.recognition.interimResults = true;
+            this.recognition.lang = 'zh-CN';
+
+            this.recognition.onresult = (event) => {
+                let finalText = '';
+                let interimText = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalText += transcript;
+                        this.recognizedText += transcript; // 累积识别的文字
+                    } else {
+                        interimText += transcript;
+                    }
+                }
+
+                if (interimText) {
+                    // 更新按钮title显示实时识别结果
+                    this.button.title = `正在识别: ${interimText}`;
+                }
+
+                // 不再在识别到文字时立即发送，而是等待用户停止录音
+            };
+
+            this.recognition.onerror = (event) => {
+                this.onError(`语音识别错误: ${event.error}`);
+                this.stopRecording();
+            };
+
+            this.recognition.onend = () => {
+                if (this.isRecording) {
+                    setTimeout(() => this.recognition.start(), 100);
+                }
+            };
+        }
+
+        bindEvents() {
+            this.button.addEventListener('click', () => {
+                if (this.isRecording) {
+                    this.stopRecording();
+                } else {
+                    this.startRecording();
+                }
+            });
+        }
+
+        async startRecording() {
+            if (this.recognitionMethod === 'webspeech' && this.recognition) {
+                this.recognizedText = ''; // 清空之前识别的文字
+                this.recognition.start();
+            } else {
+                // MediaRecorder 实现（可选）
+                return;
+            }
+
+            this.isRecording = true;
+            this.button.classList.add('recording');
+            this.button.title = '正在聆听...';
+        }
+
+        stopRecording() {
+            this.isRecording = false;
+            this.button.classList.remove('recording');
+            this.button.title = '语音输入';
+
+            if (this.recognition) {
+                this.recognition.stop();
+            }
+
+            // 停止录音后发送识别的文字
+            if (this.recognizedText.trim()) {
+                this.onResult(this.recognizedText.trim());
+            }
+        }
+    }
 
     // === TTS核心控制变量 ===
     let ttsBuffer = '';
@@ -720,6 +930,26 @@
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
+    // ========== 语音输入初始化 ==========
+    let speechInput = null;
+
+    function initializeSpeechInput() {
+        speechInput = new SpeechTextInput({
+            buttonId: 'speechButton',
+            statusId: 'speechStatus',
+            onResult: (text) => {
+                // 直接发送识别的文字
+                const messageInput = document.getElementById('messageInput');
+                messageInput.value = text;
+                sendMessage();
+            },
+            onError: (error) => {
+                console.error('语音输入错误:', error);
+                addErrorMessage('语音输入失败: ' + error);
+            }
+        });
+    }
+
     // ========== 事件绑定 ==========
     document.getElementById('messageInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -730,6 +960,8 @@
 
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
+        // 初始化语音输入功能
+        initializeSpeechInput();
     });
 
     document.getElementById('stopAudio').addEventListener('click', stopAudio);

@@ -7,6 +7,8 @@ import asyncio
 import threading
 from queue import Queue
 import uuid
+import ssl
+import os
 
 app = Flask(__name__)
 
@@ -27,6 +29,15 @@ def index():
 @app.route('/favicon.ico')
 def favicon():
     return '', 204  # 返回空内容，避免404错误
+
+@app.route('/test')
+def test():
+    """网络连接测试页面"""
+    try:
+        with open('test_connection.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "测试页面未找到", 404
 
 # ✅ 限制 TTS 最大并发数
 tts_semaphore = asyncio.Semaphore(7)
@@ -66,8 +77,6 @@ def tts():
     except Exception as e:
         print(f"[TTS异常] {e}")
         return jsonify({'error': f'TTS服务错误: {str(e)}'}), 500
-
-
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -182,5 +191,100 @@ def chat():
     
     return Response(generate(), mimetype='text/plain')
 
+def create_self_signed_cert():
+    """创建自签名证书"""
+    cert_dir = "ssl_certs"
+    os.makedirs(cert_dir, exist_ok=True)
+    
+    cert_file = os.path.join(cert_dir, "cert.pem")
+    key_file = os.path.join(cert_dir, "key.pem")
+    
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        print(f"证书文件已存在：\n  {cert_file}\n  {key_file}")
+        return cert_file, key_file
+    
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        import datetime
+        
+        # 生成私钥
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+        
+        # 创建证书
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "State"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "City"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Organization"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+        ])
+        
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            private_key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.utcnow()
+        ).not_valid_after(
+            datetime.datetime.utcnow() + datetime.timedelta(days=365)
+        ).add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.DNSName("127.0.0.1"),
+                x509.DNSName("192.168.19.139"),
+            ]),
+            critical=False,
+        ).sign(private_key, hashes.SHA256())
+        
+        # 写入文件
+        with open(cert_file, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        
+        with open(key_file, "wb") as f:
+            f.write(private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        
+        print(f"SSL证书生成成功：\n  证书文件: {cert_file}\n  私钥文件: {key_file}")
+        return cert_file, key_file
+        
+    except ImportError:
+        print("需要安装 cryptography 库: pip install cryptography")
+        return None, None
+    except Exception as e:
+        print(f"生成证书失败: {e}")
+        return None, None
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # 尝试创建SSL证书
+    cert_file, key_file = create_self_signed_cert()
+    
+    if cert_file and key_file:
+        print("启动HTTPS服务器...")
+        print("访问地址:")
+        print("  https://localhost:5000")
+        print("  https://127.0.0.1:5000") 
+        print("  https://192.168.19.139:5000")
+        print("\n注意：浏览器会提示安全警告，请点击'高级'->'继续访问'")
+        
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert_file, key_file)
+        
+        app.run(debug=True, host='0.0.0.0', port=5000, ssl_context=context)
+    else:
+        print("启动HTTP服务器...")
+        print("访问地址: http://localhost:5000")
+        print("注意：HTTP模式下语音识别功能可能受限")
+        app.run(debug=True, host='0.0.0.0', port=5000)
