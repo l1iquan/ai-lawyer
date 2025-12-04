@@ -73,7 +73,7 @@ def get_legal_advice(case_summary: str) -> str:
 
 # 初始化主agent模型
 main_model = init_chat_model(
-    model="qwen3-32b",
+    model="qwen-flash",
     model_provider="openai",
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     api_key=DASHSCOPE_API_KEY,
